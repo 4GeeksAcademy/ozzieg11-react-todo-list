@@ -1,27 +1,24 @@
 import React, { useEffect, useState, useRef } from "react";
 import "../../styles/index.css";
 
+const API_URL = "https://playground.4geeks.com/todo/todos/ozzie";
+
+function generateId() {
+  return Date.now().toString() + Math.random().toString(36).slice(2, 8);
+}
+
 export default function TodoList() {
   const [theme, setTheme] = useState(() => {
     try {
       const stored = localStorage.getItem("todolist:theme");
       if (stored) return stored;
-      return window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
         : "light";
     } catch {
       return "light";
     }
   });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("todolist:theme", theme);
-      if (theme === "dark") document.documentElement.classList.add("dark");
-      else document.documentElement.classList.remove("dark");
-    } catch {}
-  }, [theme]);
 
   const [todos, setTodos] = useState(() => {
     try {
@@ -31,8 +28,16 @@ export default function TodoList() {
       return [];
     }
   });
+
   const [text, setText] = useState("");
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("todolist:theme", theme);
+      document.documentElement.classList.toggle("dark", theme === "dark");
+    } catch {}
+  }, [theme]);
 
   useEffect(() => {
     localStorage.setItem("todos:v1", JSON.stringify(todos));
@@ -40,45 +45,57 @@ export default function TodoList() {
 
   function addTodo(e) {
     e.preventDefault();
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const newTodo = {
-      id: Date.now().toString() + Math.random().toString(36).slice(2, 8),
-      text: trimmed,
-      completed: false,
-      createdAt: Date.now(),
-    };
-    setTodos((prev) => [newTodo, ...prev]);
-    setText("");
-    inputRef.current?.focus();
+    if (!text.trim()) return;
+
+    fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: text.trim(), is_done: false }),
+    })
+      .then(() => {
+        const newTodo = {
+          id: generateId(),
+          text: text.trim(),
+          completed: false,
+          createdAt: Date.now(),
+        };
+        setTodos([newTodo, ...todos]);
+        setText("");
+        inputRef.current?.focus();
+      })
+      .catch((err) => console.error(err));
+  }
+
+  function toggleTodo(id) {
+    const updated = todos.map((t) =>
+      t.id === id ? { ...t, completed: !t.completed } : t
+    );
+    setTodos(updated);
   }
 
   function removeTodo(id) {
-    setTodos((prev) => prev.filter((t) => t.id !== id));
+    setTodos(todos.filter((t) => t.id !== id));
   }
-  function toggleTodo(id) {
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
-    );
-  }
+
   function clearCompleted() {
-    setTodos((prev) => prev.filter((t) => !t.completed));
+    const updated = todos.filter((t) => !t.completed);
+    setTodos(updated);
   }
+
+  function clearAll() {
+    setTodos([]);
+  }
+
   const remaining = todos.filter((t) => !t.completed).length;
 
   return (
     <div className="todo-root">
-      <div
-        className="todo-card"
-        role="application"
-        aria-label="Todo list application"
-      >
+      <div className="todo-card" role="application">
         <header className="todo-header">
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center",
               gap: 12,
             }}
           >
@@ -88,37 +105,29 @@ export default function TodoList() {
                 Add tasks, mark complete, and remove items.
               </p>
             </div>
-
-            <div>
-              <button
-                className="theme-toggle"
-                onClick={() =>
-                  setTheme((prev) => (prev === "dark" ? "light" : "dark"))
-                }
-                aria-label="Toggle theme"
-                title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-              >
-                {theme === "dark" ? "☀️" : "🌙"}
-              </button>
-            </div>
+            <button
+              className="theme-toggle"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </button>
           </div>
         </header>
 
-        <form className="todo-form" onSubmit={addTodo} aria-label="Add todo">
+        <form className="todo-form" onSubmit={addTodo}>
           <input
             ref={inputRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             className="todo-input"
             placeholder="What needs to be done?"
-            aria-label="New todo"
           />
           <button type="submit" className="todo-add" disabled={!text.trim()}>
             Add
           </button>
         </form>
 
-        <section className="todo-list-wrap" aria-live="polite">
+        <section className="todo-list-wrap">
           {todos.length === 0 ? (
             <div className="todo-empty">No tasks, add a task</div>
           ) : (
@@ -131,13 +140,7 @@ export default function TodoList() {
                       checked={todo.completed}
                       onChange={() => toggleTodo(todo.id)}
                       className="todo-checkbox"
-                      aria-label={
-                        todo.completed
-                          ? `Mark ${todo.text} as not completed`
-                          : `Mark ${todo.text} as completed`
-                      }
                     />
-
                     <span
                       onDoubleClick={() => toggleTodo(todo.id)}
                       className={`todo-text ${
@@ -147,17 +150,12 @@ export default function TodoList() {
                       {todo.text}
                     </span>
                   </label>
-
                   <div className="todo-item-right">
-                    <time
-                      className="todo-time"
-                      dateTime={new Date(todo.createdAt).toISOString()}
-                    >
+                    <time className="todo-time">
                       {new Date(todo.createdAt).toLocaleString()}
                     </time>
                     <button
                       onClick={() => removeTodo(todo.id)}
-                      aria-label={`Remove ${todo.text}`}
                       className="todo-remove"
                     >
                       ✕
@@ -174,7 +172,7 @@ export default function TodoList() {
             {remaining} item{remaining !== 1 ? "s" : ""} left
           </div>
           <div className="todo-actions">
-            <button onClick={() => setTodos([])} className="todo-action">
+            <button onClick={clearAll} className="todo-action">
               Clear All
             </button>
             <button onClick={clearCompleted} className="todo-action">
