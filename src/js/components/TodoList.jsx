@@ -1,92 +1,82 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "../../styles/index.css";
 
-const API_URL = "https://playground.4geeks.com/todo/todos/ozzie";
-
-function generateId() {
-  return Date.now().toString() + Math.random().toString(36).slice(2, 8);
-}
+const BASE_URL = "https://playground.4geeks.com/todo";
+const USERNAME = "ozzie";
 
 export default function TodoList() {
-  const [theme, setTheme] = useState(() => {
-    try {
-      const stored = localStorage.getItem("todolist:theme");
-      if (stored) return stored;
-      return window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
-    } catch {
-      return "light";
-    }
-  });
-
-  const [todos, setTodos] = useState(() => {
-    try {
-      const raw = localStorage.getItem("todos:v1");
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
-
+  const [theme, setTheme] = useState("dark");
+  const [todos, setTodos] = useState([]);
   const [text, setText] = useState("");
   const inputRef = useRef(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("todolist:theme", theme);
-      document.documentElement.classList.toggle("dark", theme === "dark");
-    } catch {}
+    document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
-  useEffect(() => {
-    localStorage.setItem("todos:v1", JSON.stringify(todos));
-  }, [todos]);
+  const createUser = async () => {
+    await fetch(`${BASE_URL}/users/${USERNAME}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+  };
 
-  function addTodo(e) {
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await fetch(`${BASE_URL}/users/${USERNAME}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify([]),
+        });
+      } catch {}
+    };
+    init();
+  }, []);
+
+  const addTodo = async (e) => {
     e.preventDefault();
     if (!text.trim()) return;
 
-    fetch(API_URL, {
+    const res = await fetch(`${BASE_URL}/todos/${USERNAME}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: text.trim(), is_done: false }),
-    })
-      .then(() => {
-        const newTodo = {
-          id: generateId(),
-          text: text.trim(),
-          completed: false,
-          createdAt: Date.now(),
-        };
-        setTodos([newTodo, ...todos]);
-        setText("");
-        inputRef.current?.focus();
-      })
-      .catch((err) => console.error(err));
-  }
+      body: JSON.stringify({ label: text, is_done: false }),
+    });
 
-  function toggleTodo(id) {
-    const updated = todos.map((t) =>
-      t.id === id ? { ...t, completed: !t.completed } : t
-    );
-    setTodos(updated);
-  }
+    const data = await res.json();
+    setTodos([...todos, { ...data }]);
+    setText("");
+    inputRef.current.focus();
+  };
 
-  function removeTodo(id) {
+  const removeTodo = async (id) => {
+    await fetch(`${BASE_URL}/todos/${id}`, { method: "DELETE" });
     setTodos(todos.filter((t) => t.id !== id));
-  }
+  };
 
-  function clearCompleted() {
-    const updated = todos.filter((t) => !t.completed);
-    setTodos(updated);
-  }
+  const toggleTodo = async (id) => {
+    const todoToUpdate = todos.find((t) => t.id === id);
+    if (!todoToUpdate) return;
 
-  function clearAll() {
+    const updatedTodo = { ...todoToUpdate, is_done: !todoToUpdate.is_done };
+
+    await fetch(`${BASE_URL}/todos/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedTodo),
+    });
+
+    setTodos(todos.map((t) => (t.id === id ? updatedTodo : t)));
+  };
+
+  const clearAll = async () => {
+    await fetch(`${BASE_URL}/users/${USERNAME}`, { method: "DELETE" });
+    await createUser();
     setTodos([]);
-  }
+  };
 
-  const remaining = todos.filter((t) => !t.completed).length;
+  const remaining = todos.filter((t) => !t.is_done).length;
 
   return (
     <div className="todo-root">
@@ -137,23 +127,18 @@ export default function TodoList() {
                   <label className="todo-item-left">
                     <input
                       type="checkbox"
-                      checked={todo.completed}
+                      checked={todo.is_done}
                       onChange={() => toggleTodo(todo.id)}
                       className="todo-checkbox"
                     />
                     <span
-                      onDoubleClick={() => toggleTodo(todo.id)}
-                      className={`todo-text ${
-                        todo.completed ? "completed" : ""
-                      }`}
+                      className={`todo-text ${todo.is_done ? "completed" : ""}`}
                     >
-                      {todo.text}
+                      {todo.label}
                     </span>
                   </label>
+
                   <div className="todo-item-right">
-                    <time className="todo-time">
-                      {new Date(todo.createdAt).toLocaleString()}
-                    </time>
                     <button
                       onClick={() => removeTodo(todo.id)}
                       className="todo-remove"
@@ -174,9 +159,6 @@ export default function TodoList() {
           <div className="todo-actions">
             <button onClick={clearAll} className="todo-action">
               Clear All
-            </button>
-            <button onClick={clearCompleted} className="todo-action">
-              Clear Completed
             </button>
           </div>
         </footer>
